@@ -71,4 +71,10 @@ handoff 与 transcript 快照会把**对话原文**落盘到本机 `~/.claude/vf
 
 ## License
 
-MIT
+本项目基于 [MIT License](./LICENSE) 开源 —— 可自由使用、修改、分发与商用，仅需保留版权与许可声明。
+
+> 按「现状」提供，不含任何明示或暗示的担保。详见 [LICENSE](./LICENSE)。
+
+Copyright © 2026 skkoweio2
+
+欢迎 Issue / PR。
