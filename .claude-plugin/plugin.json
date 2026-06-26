@@ -1,7 +1,7 @@
 {
   "name": "claude-vfs-memory",
   "version": "1.0.0",
-  "description": "会话级外置虚拟文件记忆系统：大输出自动卸载、关键词召回、跨会话/压缩续接、上下文阈值提醒、90天自动清理。对抗长任务失忆与降智，纯 sh + jq，无第三方硬依赖。",
+  "description": "Session-scoped external virtual-file memory system: auto-offload large outputs, keyword recall, cross-session/compaction resume, context-threshold reminders, 90-day auto-cleanup. Fights memory loss and degradation on long agent tasks. Pure sh + jq, no hard dependencies.",
   "keywords": ["memory", "context", "handoff", "rollover", "vfs", "session"],
   "license": "MIT",
   "author": { "name": "skkoweio2" }
