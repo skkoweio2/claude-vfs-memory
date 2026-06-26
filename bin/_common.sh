@@ -58,34 +58,35 @@ emit_context() {
 # 自动生成的 handoff 首行带 <!-- vfs:auto --> 标记，供调用方判断是否为手动精炼版。
 vfs_write_handoff() {
   _trigger="$1"
+  _src="${2:-$TRANSCRIPT}"   # 可指定源 transcript（如 /clear 时用前驱会话的）；默认当前会话
   ensure_session_dir
   _snap="${SESSION_DIR}/transcript-snapshot.jsonl"
-  [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ] && cp -f "$TRANSCRIPT" "$_snap" 2>/dev/null
+  [ -n "$_src" ] && [ -f "$_src" ] && cp -f "$_src" "$_snap" 2>/dev/null
 
   _handoff="${SESSION_DIR}/handoff.md"
   _now="$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)"
   _recent=""
   _files=""
   _last=""
-  if [ -n "$TRANSCRIPT" ] && [ -f "$TRANSCRIPT" ]; then
+  if [ -n "$_src" ] && [ -f "$_src" ]; then
     _recent="$(jq -r '
       select(.type=="user") | .message.content
       | if type=="string" then . else (map(select(.type=="text").text)|join(" ")) end
       | select(. != null and (startswith("<")|not) and (length>0))
-    ' "$TRANSCRIPT" 2>/dev/null | grep -v '^$' | tail -8 | sed 's/^/- /' | cut -c1-200)"
+    ' "$_src" 2>/dev/null | grep -v '^$' | tail -8 | sed 's/^/- /' | cut -c1-200)"
 
     _files="$(jq -r '
       select(.type=="assistant") | .message.content[]?
       | select(.type=="tool_use" and (.name=="Write" or .name=="Edit" or .name=="NotebookEdit"))
       | .input.file_path // empty
-    ' "$TRANSCRIPT" 2>/dev/null | sort -u | tail -25 | sed 's/^/- /')"
+    ' "$_src" 2>/dev/null | sort -u | tail -25 | sed 's/^/- /')"
 
     # 上一条助手文本消息——常含"下一步我要…"，对续接最有价值（借鉴 CCR）
     _last="$(jq -r '
       select(.type=="assistant") | .message.content
       | if type=="string" then . else ((map(select(.type=="text").text)) // [] | join(" ")) end
       | select(. != null and (length>0))
-    ' "$TRANSCRIPT" 2>/dev/null | grep -v '^$' | tail -1 | cut -c1-600)"
+    ' "$_src" 2>/dev/null | grep -v '^$' | tail -1 | cut -c1-600)"
   fi
 
   # git 现场（在途未提交的工作）——子 shell 切目录，不污染当前 CWD（借鉴 CCR）

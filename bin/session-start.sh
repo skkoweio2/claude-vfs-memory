@@ -11,9 +11,12 @@ vfs_log "session-start source=$SOURCE project=$PROJECT id=$SESSION_ID"
 OUT=""
 
 # 续接策略（保守，杜绝跨会话/跨项目干扰）：
-#   - 仅在明确"延续同一会话"的语境注入：clear / compact / resume；
-#   - 且只认【当前 session_id 自己的】handoff.md，没有就不注入；
-#   - startup 等冷启动一律不注入，避免新任务被旧现场带偏。
+#   - 仅在明确"延续"语境注入：clear / compact / resume；startup 冷启动一律不注入。
+#   - 先认【当前 session_id 自己的】handoff（compact/resume 同 id 时命中）。
+#   - 若没有且是 clear/compact（实测会起新 session_id、本会话目录是空的）：
+#     找【前驱 transcript】——同项目 transcript 目录里、最近 N 分钟内修改、非自身的那份，
+#     即时生成 handoff 并注入。新鲜窗口(VFS_CLEAR_FRESH_MIN，默认10)+源限定，杜绝冷启动误接旧任务。
+FRESH_MIN="${VFS_CLEAR_FRESH_MIN:-10}"
 case "$SOURCE" in
   clear|compact|resume)
     if [ -f "${SESSION_DIR}/handoff.md" ]; then
@@ -24,6 +27,23 @@ case "$SOURCE" in
 ${HANDOFF_BODY}
 
 "
+    elif { [ "$SOURCE" = "clear" ] || [ "$SOURCE" = "compact" ]; } && [ -n "$TRANSCRIPT" ]; then
+      _tdir="$(dirname "$TRANSCRIPT" 2>/dev/null)"
+      _self="$(basename "$TRANSCRIPT" 2>/dev/null)"
+      # 同目录、最近 FRESH_MIN 分钟内修改、排除自身的最新 .jsonl = 被 /clear 的前驱会话
+      PRED="$(find "$_tdir" -maxdepth 1 -name '*.jsonl' -mmin -"$FRESH_MIN" 2>/dev/null \
+        | grep -v -- "$_self" | xargs ls -t 2>/dev/null | head -1)"
+      if [ -n "$PRED" ] && [ -f "$PRED" ]; then
+        vfs_write_handoff "predecessor:${SOURCE}" "$PRED"
+        HANDOFF_BODY="$(head -c 6000 "${SESSION_DIR}/handoff.md" 2>/dev/null)"
+        OUT="## 🗂 VFS 续接：上一会话现场（${SOURCE} 前驱，自动生成）
+（源 transcript：${PRED}）
+
+${HANDOFF_BODY}
+
+"
+        vfs_log "session-start ${SOURCE} predecessor handoff <- $PRED"
+      fi
     fi
     ;;
 esac
