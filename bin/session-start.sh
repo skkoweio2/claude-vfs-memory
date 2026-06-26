@@ -28,11 +28,23 @@ ${HANDOFF_BODY}
 
 "
     elif { [ "$SOURCE" = "clear" ] || [ "$SOURCE" = "compact" ]; } && [ -n "$TRANSCRIPT" ]; then
-      _tdir="$(dirname "$TRANSCRIPT" 2>/dev/null)"
-      _self="$(basename "$TRANSCRIPT" 2>/dev/null)"
-      # 同目录、最近 FRESH_MIN 分钟内修改、排除自身的最新 .jsonl = 被 /clear 的前驱会话
-      PRED="$(find "$_tdir" -maxdepth 1 -name '*.jsonl' -mmin -"$FRESH_MIN" 2>/dev/null \
-        | grep -v -- "$_self" | xargs ls -t 2>/dev/null | head -1)"
+      PRED=""
+      # 首选：读"活跃指针"——前驱会话在 UserPromptSubmit 记下的精确 transcript（确定性，不靠 mtime 竞速）
+      AF="$(vfs_active_file)"
+      if [ -n "$AF" ] && [ -f "$AF" ]; then
+        IFS="$(printf '\t')" read -r _psid _ptime _ppath < "$AF"
+        if [ -n "$_psid" ] && [ "$_psid" != "$SESSION_ID" ] && [ -f "$_ppath" ]; then
+          _now="$(date +%s 2>/dev/null)"; _age=$(( ${_now:-0} - ${_ptime:-0} ))
+          [ "$_age" -ge 0 ] && [ "$_age" -le $((FRESH_MIN * 60)) ] && PRED="$_ppath"
+        fi
+      fi
+      # 兜底：指针缺失时，回退到"同目录最近 N 分钟内修改的非自身 .jsonl"
+      if [ -z "$PRED" ]; then
+        _tdir="$(dirname "$TRANSCRIPT" 2>/dev/null)"
+        _self="$(basename "$TRANSCRIPT" 2>/dev/null)"
+        PRED="$(find "$_tdir" -maxdepth 1 -name '*.jsonl' -mmin -"$FRESH_MIN" 2>/dev/null \
+          | grep -v -- "$_self" | xargs ls -t 2>/dev/null | head -1)"
+      fi
       if [ -n "$PRED" ] && [ -f "$PRED" ]; then
         vfs_write_handoff "predecessor:${SOURCE}" "$PRED"
         HANDOFF_BODY="$(head -c 6000 "${SESSION_DIR}/handoff.md" 2>/dev/null)"

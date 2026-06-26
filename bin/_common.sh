@@ -53,6 +53,24 @@ emit_context() {
   printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":%s}}\n' "$1" "$esc"
 }
 
+# 本项目"当前活跃会话"指针文件路径（按 transcript 目录哈希，唯一对应一个项目路径，
+# 不受同名目录干扰）。用于 /clear 后确定性定位前驱会话，替代 mtime 猜测。
+vfs_active_file() {
+  _td="$(dirname "$TRANSCRIPT" 2>/dev/null)"
+  { [ -z "$_td" ] || [ "$_td" = "." ]; } && return 0
+  _h="$(printf '%s' "$_td" | shasum -a 256 2>/dev/null | awk '{print $1}')"
+  [ -z "$_h" ] && return 0
+  printf '%s/index/active/%s.txt' "$VFS_ROOT" "$_h"
+}
+
+# 记录本会话为该项目的活跃会话（在 UserPromptSubmit 调用——发言即焦点）。
+vfs_mark_active() {
+  _af="$(vfs_active_file)"
+  [ -z "$_af" ] && return 0
+  mkdir -p "$(dirname "$_af")" 2>/dev/null
+  printf '%s\t%s\t%s\n' "$SESSION_ID" "$(date +%s 2>/dev/null)" "$TRANSCRIPT" > "$_af" 2>/dev/null
+}
+
 # 快照 transcript + 生成 handoff.md（PreCompact 与 SessionEnd 共用）。
 # 用法：vfs_write_handoff <trigger标签>。无 transcript 时仍写占位 handoff。
 # 自动生成的 handoff 首行带 <!-- vfs:auto --> 标记，供调用方判断是否为手动精炼版。

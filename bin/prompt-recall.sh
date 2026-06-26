@@ -8,6 +8,9 @@
 PROMPT="$(vfs_get '.prompt')"
 [ -z "$PROMPT" ] && exit 0
 
+# 记录本会话为该项目当前活跃会话——供 /clear 后新会话确定性定位前驱（见 session-start）
+vfs_mark_active
+
 # 提取关键词：ASCII 词(>=3 字母数字) + 中文二元组(bigram)，去停用词，最多 14 个。
 # 用 python3 做 UTF-8 安全分词（tr 无法对无空格的中文正确切词）。
 KW="$(printf '%s' "$PROMPT" | python3 -c '
