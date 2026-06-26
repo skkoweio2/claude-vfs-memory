@@ -25,7 +25,7 @@
 
 **方式一：marketplace（推荐分享）**
 ```
-/plugin marketplace add <你的github用户名>/claude-vfs-memory
+/plugin marketplace add skkoweio2/claude-vfs-memory
 /plugin install claude-vfs-memory
 ```
 
