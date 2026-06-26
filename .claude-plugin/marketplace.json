@@ -1,0 +1,11 @@
+{
+  "name": "vfs-memory-marketplace",
+  "owner": { "name": "tick" },
+  "plugins": [
+    {
+      "name": "claude-vfs-memory",
+      "source": "./",
+      "description": "会话级外置虚拟文件记忆系统：卸载/召回/续接/阈值提醒/自动清理，对抗长任务失忆与降智。"
+    }
+  ]
+}
