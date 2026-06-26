@@ -1,80 +1,82 @@
 # claude-vfs-memory
 
-会话级**外置虚拟文件记忆系统**，对抗 Claude Code 长任务的**失忆与降智**。纯 `sh` + `jq` 实现，hooks 驱动，**无第三方硬依赖**（不需要 claude-hud 等插件）。
+**English** · [简体中文](./README.zh-CN.md)
 
-## 它做什么
+A session-scoped **external virtual-file memory system** that fights **context loss and degradation** on long Claude Code tasks. Pure `sh` + `jq`, hooks-driven, **no hard third-party dependencies** (no claude-hud or other plugins required).
 
-| 时机 | 行为 |
-|------|------|
-| 工具输出 >8KB（Bash/WebFetch/Grep） | 自动落盘，上下文里替换为"摘要 + 取回路径"，防止单次大输出撑爆窗口 |
-| 每条用户消息 | 按关键词从持久记忆与本会话工作区召回相关文件，给路径清单供按需 Read |
-| 上下文 ≥ 75%（自读 transcript usage 算，claude-hud 有则优先用） | 备好加强版 handoff，并注入一行提醒建议 `/clear` 或 `/compact`。**只提醒，绝不自动开窗/停会话** |
-| 压缩前 / 会话结束（含 `/clear`、退出） | 快照 transcript + 生成加强版 handoff（含最近用户意图、上次停在哪、改动文件、git 现场）。手写的 `/handoff` 不会被覆盖 |
-| 新会话 `clear`/`compact`/`resume` | 仅注入【当前会话自己的】handoff 续接；冷启动不注入，杜绝新任务被旧现场干扰 |
-| 每日一次（会话结束时节流触发） | 清理 90 天前的会话工作区；**绝不触碰 `~/.claude/memory` 持久记忆** |
+## What it does
 
-手动命令：`/vfs` 看状态 · `/recall <主题>` 召回 · `/offload` 卸载上一段大输出 · `/handoff` 写交接快照 · `/save <要点>` 固化长期记忆。
+| When | Behavior |
+|------|----------|
+| Tool output > 8KB (Bash/WebFetch/Grep) | Auto-offloads to disk and replaces it in context with a "summary + retrieval path", so one big dump can't blow up your window |
+| Every user message | Recalls relevant files from persistent memory and the current session workspace by keyword, returning a path list for on-demand Read |
+| Context ≥ 75% (computed from transcript usage; uses claude-hud's value if present) | Prepares an enhanced handoff and injects a one-line reminder to `/clear` or `/compact`. **Reminds only — never auto-opens a window or kills the session** |
+| Before compaction / on session end (incl. `/clear`, exit) | Snapshots the transcript + generates an enhanced handoff (recent user intent, where you stopped, changed files, git state). A hand-written `/handoff` is never overwritten |
+| New session via `clear`/`compact`/`resume` | Injects **only the current session's own** handoff to resume; cold starts inject nothing, so a fresh task is never polluted by an old context |
+| Once daily (throttled, triggered on session end) | Cleans up session workspaces older than 90 days; **never touches `~/.claude/memory` persistent memory** |
 
-## 依赖
+Manual commands: `/vfs` status · `/recall <topic>` recall · `/offload` offload the last big output · `/handoff` write a handoff snapshot · `/save <points>` persist long-term memory.
 
-- `jq`（必需；缺失则所有 hook 自动降级为 no-op，绝不影响会话）
-- `python3`（recall 的中文分词需要；缺失只影响召回质量）
-- `shasum`（macOS 自带；用于读 claude-hud 缓存，可选）
+## Dependencies
 
-## 安装
+- `jq` (required; if missing, all hooks degrade to no-ops and never disrupt the session)
+- `python3` (needed for CJK tokenization in recall; if missing, only recall quality is affected)
+- `shasum` (bundled on macOS; used to read the claude-hud cache, optional)
 
-**方式一：marketplace（推荐分享）**
+## Install
+
+**Option 1: marketplace (recommended for sharing)**
 ```
 /plugin marketplace add skkoweio2/claude-vfs-memory
 /plugin install claude-vfs-memory
 ```
 
-**方式二：本地目录**
+**Option 2: local directory**
 ```
 /plugin marketplace add /path/to/claude-vfs-memory
 /plugin install claude-vfs-memory
 ```
 
-安装后在**新会话**生效，hooks 自动接线，无需手改 `settings.json`。
+Takes effect in a **new session**; hooks wire up automatically, no manual `settings.json` edits needed.
 
-## 配置（环境变量）
+## Configuration (environment variables)
 
-| 变量 | 默认 | 含义 |
-|------|------|------|
-| `VFS_HOME` | `~/.claude/vfs` | 数据根目录（会话工作区、索引、日志） |
-| `VFS_CTX_THRESHOLD` | `75` | 上下文提醒阈值（%） |
-| `VFS_CONTEXT_WINDOW` | 自动 | 无 claude-hud 时的窗口大小回退（如 1M 会话设 `1000000`） |
-| `VFS_GC_DAYS` | `90` | 会话工作区保留天数 |
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `VFS_HOME` | `~/.claude/vfs` | Data root (session workspaces, index, logs) |
+| `VFS_CTX_THRESHOLD` | `75` | Context reminder threshold (%) |
+| `VFS_CONTEXT_WINDOW` | auto | Window-size fallback when claude-hud is absent (e.g. set `1000000` for a 1M session) |
+| `VFS_GC_DAYS` | `90` | Retention days for session workspaces |
 
-## Codex CLI 支持（可选，单独安装）
+## Codex CLI support (optional, installed separately)
 
-Codex 没有 per-tool hook，所以用一个 **launchd 后台守护**（每 60s）扫描活跃 rollout，≥75% 时写 handoff + 发 macOS 通知。**同样只提醒、不开窗。**
+Codex has no per-tool hooks, so a **launchd background daemon** (every 60s) scans active rollouts and, at ≥75%, writes a handoff + sends a macOS notification. **Reminds only — never opens a window.**
 
 ```
-sh bin/codex-watch-ctl.sh install     # 安装并启动
-sh bin/codex-watch-ctl.sh status      # 查看状态
-sh bin/codex-watch-ctl.sh uninstall   # 卸载
+sh bin/codex-watch-ctl.sh install     # install and start
+sh bin/codex-watch-ctl.sh status      # check status
+sh bin/codex-watch-ctl.sh uninstall   # uninstall
 ```
-配置：`CODEX_CTX_THRESHOLD` / `CODEX_CTX_IDLE_MIN` / `CODEX_CTX_COOLDOWN_MIN`。
-临时禁用：`touch ~/.claude/vfs/codex-state/DISABLED`。
+Config: `CODEX_CTX_THRESHOLD` / `CODEX_CTX_IDLE_MIN` / `CODEX_CTX_COOLDOWN_MIN`.
+Temporarily disable: `touch ~/.claude/vfs/codex-state/DISABLED`.
 
-## 隐私
+## Privacy
 
-handoff 与 transcript 快照会把**对话原文**落盘到本机 `~/.claude/vfs`（或 `VFS_HOME`）。**纯本地、不外传**。删除：清空该目录即可。
+Handoffs and transcript snapshots write your **raw conversation** to local `~/.claude/vfs` (or `VFS_HOME`). **Local only, never sent anywhere.** To delete: just clear that directory.
 
-## 卸载
+## Uninstall
 
 ```
 /plugin uninstall claude-vfs-memory
 ```
-数据目录 `~/.claude/vfs` 不会被自动删除，按需手动清理。Codex 守护单独 `sh bin/codex-watch-ctl.sh uninstall`。
+The data directory `~/.claude/vfs` is not auto-deleted; clean it up manually if you want. The Codex daemon is removed separately via `sh bin/codex-watch-ctl.sh uninstall`.
 
 ## License
 
-本项目基于 [MIT License](./LICENSE) 开源 —— 可自由使用、修改、分发与商用，仅需保留版权与许可声明。
+Released under the [MIT License](./LICENSE) — free to use, modify, distribute, and use commercially; just retain the copyright and license notice.
 
-> 按「现状」提供，不含任何明示或暗示的担保。详见 [LICENSE](./LICENSE)。
+> Provided "as is", without warranty of any kind. See [LICENSE](./LICENSE).
 
 Copyright © 2026 skkoweio2
 
-欢迎 Issue / PR。
+Issues / PRs welcome.
